@@ -1,0 +1,29 @@
+# ============================================================
+# NeuroSymbolic Verifier — Requirements
+# ============================================================
+# All LLM calls now use Anthropic Claude (anthropic SDK).
+# No google-generativeai dependency.
+#
+# After committing this file, go to:
+#   Streamlit Cloud → Manage app → Reboot app
+# to force a fresh install.
+# ============================================================
+
+# ── UI ────────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── Anthropic Claude (M2 parser/auditor + M4 router + generation)
+anthropic>=0.25.0
+
+# ── ChromaDB — semantic memory (M3) ──────────────────────────
+chromadb>=0.5.0
+
+# ── Wikipedia — research source (M4) ─────────────────────────
+wikipedia>=1.4.0
+
+# ── .env support ─────────────────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── LTN + TensorFlow (M1) — optional, comment out if too heavy
+# ltn>=1.2.0
+# tensorflow-cpu>=2.16.0
