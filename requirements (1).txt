@@ -13,8 +13,7 @@ streamlit>=1.35.0
 
 
 # ── Google Gemini (M2 LLM Parser + M4 Agentic Router) ───────
-google-genai
-
+google-generativeai>=0.7.0
 # ── LTN + TensorFlow (M1 Logic Tensor Network) ───────────────
 # TensorFlow CPU-only build is lighter; swap for tensorflow-gpu
 # if you have a CUDA-capable GPU.
