@@ -12,7 +12,7 @@
 # ── Anthropic API Key ────────────────────────────────────────
 # Required for all LLM calls (M2, M4, draft generation).
 # Get yours at: https://console.anthropic.com/
-ANTHROPIC_API_KEY=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
+ANTHROPIC_API_KEY=
 
 
 # ── ChromaDB Storage Path (M3) ───────────────────────────────
