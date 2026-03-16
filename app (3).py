@@ -338,6 +338,25 @@ _app_dir = os.path.dirname(os.path.abspath(__file__))
 if _app_dir not in sys.path:
     sys.path.insert(0, _app_dir)
 
+# ── Resolve API key: st.secrets (Cloud) → os.getenv (.env) → empty ───────────
+# We do this ONCE here and store in session_state so it survives reruns.
+# Never pass value= to a password widget — it locks the field on rerun.
+def _resolve_api_key() -> str:
+    """Read key from Streamlit secrets first, then env, then return empty."""
+    # Streamlit Cloud secrets
+    try:
+        key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        if key:
+            return key.strip()
+    except Exception:
+        pass
+    # Local .env / environment variable
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    return key.strip()
+
+if "resolved_api_key" not in st.session_state:
+    st.session_state.resolved_api_key = _resolve_api_key()
+
 # ════════════════════════════════════════════════════════════════════════════
 # LAYOUT
 # ════════════════════════════════════════════════════════════════════════════
@@ -347,12 +366,32 @@ with col_left:
 
     # ── API Key ───────────────────────────────────────────────────────────────
     st.markdown('<div class="section-label">🔑 Anthropic API Key</div>', unsafe_allow_html=True)
-    api_key = st.text_input(
+
+    # Show a pre-filled indicator if key came from secrets/env, but still
+    # allow the user to paste their own. We do NOT pass value= here —
+    # that's what caused the key to be silently ignored on reruns.
+    _key_hint = "Auto-loaded from secrets ✓" if st.session_state.resolved_api_key else "sk-ant-…"
+    api_key_input = st.text_input(
         "api_key", label_visibility="collapsed",
-        type="password", placeholder="sk-ant-…",
-        value=os.getenv("ANTHROPIC_API_KEY", ""),
+        type="password", placeholder=_key_hint,
         key="api_key_field",
     )
+    # Prefer what the user typed; fall back to resolved secret/env key
+    api_key = api_key_input.strip() if api_key_input.strip() else st.session_state.resolved_api_key
+
+    # Show a small status line so the user knows whether the key was found
+    if st.session_state.resolved_api_key and not api_key_input.strip():
+        st.markdown(
+            '<p style="font-size:0.72rem;color:rgba(109,206,168,0.7);margin-top:-0.3rem;">'
+            '🔒 Key loaded from environment / Streamlit secrets</p>',
+            unsafe_allow_html=True,
+        )
+    elif not api_key:
+        st.markdown(
+            '<p style="font-size:0.72rem;color:rgba(232,115,109,0.7);margin-top:-0.3rem;">'
+            '⚠ No key found — paste your <code>sk-ant-</code> key above</p>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -568,7 +607,7 @@ with col_right:
             prog.progress(52, text="✍️ Generating draft with Claude…")
             status.info("Generating content with Claude…")
             try:
-                client = _anthropic.Anthropic(api_key=api_key)
+                client = _anthropic.Anthropic(api_key=api_key.strip())
 
                 ctx_parts = [
                     f"[{s.get('source_name','Source')}] {s['context']}"
