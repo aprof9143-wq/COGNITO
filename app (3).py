@@ -1,12 +1,7 @@
 """
 NeuroSymbolic Verifier — Streamlit App
-Fixed:
-  1. Session state bug: use st.session_state["rule_draft"] + input_counter
-     to clear the textarea without touching a keyed widget directly.
-  2. Module imports: graceful fallback with clear error messages when
-     optional packages (ltn, tensorflow, chromadb, wikipedia) are absent.
-  3. google-generativeai imported only inside pipeline execution, with a
-     clear user-facing error if missing.
+All LLM calls use Anthropic Claude (anthropic SDK).
+No google-generativeai dependency anywhere in this file.
 """
 
 import streamlit as st
@@ -306,7 +301,7 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 1.3rem 
 st.markdown("""
 <div class="nsv-header">
   <div class="nsv-logo">Neuro<span>Symbolic</span> Verifier</div>
-  <div class="nsv-subtitle">LTN · LLM Parser · Vector Memory · Agentic Research</div>
+  <div class="nsv-subtitle">LTN · Claude · Vector Memory · Agentic Research</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -333,17 +328,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Session state init ────────────────────────────────────────────────────────
-for _k, _v in [
-    ("rules", []),
-    ("results", None),
-    ("input_counter", 0),   # incremented to force textarea re-render blank
-]:
+# ── Session state ─────────────────────────────────────────────────────────────
+for _k, _v in [("rules", []), ("results", None), ("input_counter", 0)]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── Module path ───────────────────────────────────────────────────────────────
-# On Streamlit Cloud the modules live alongside app.py; make sure Python finds them.
+# ── Module path: ensure app's own directory is on sys.path ───────────────────
 _app_dir = os.path.dirname(os.path.abspath(__file__))
 if _app_dir not in sys.path:
     sys.path.insert(0, _app_dir)
@@ -353,56 +343,54 @@ if _app_dir not in sys.path:
 # ════════════════════════════════════════════════════════════════════════════
 col_left, col_right = st.columns([1, 1.15], gap="large")
 
-# ── LEFT COLUMN ───────────────────────────────────────────────────────────────
 with col_left:
 
-    # API Key — pre-filled from .env if present
-    st.markdown('<div class="section-label">🔑 Gemini API Key</div>', unsafe_allow_html=True)
+    # ── API Key ───────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-label">🔑 Anthropic API Key</div>', unsafe_allow_html=True)
     api_key = st.text_input(
         "api_key", label_visibility="collapsed",
-        type="password", placeholder="AIza…",
-        value=os.getenv("GEMINI_API_KEY", ""),
-        key="api_key_field"
+        type="password", placeholder="sk-ant-…",
+        value=os.getenv("ANTHROPIC_API_KEY", ""),
+        key="api_key_field",
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Mode
+    # ── Mode ──────────────────────────────────────────────────────────────────
     st.markdown('<div class="section-label">⚡ Pipeline Mode</div>', unsafe_allow_html=True)
     mode = st.radio(
         "mode", label_visibility="collapsed",
         options=["🔬 Full Pipeline", "📐 Rules + Audit Only", "🌐 Research + Generate"],
-        horizontal=True, key="pipeline_mode"
+        horizontal=True, key="pipeline_mode",
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Generation prompt
+    # ── Generation Prompt ─────────────────────────────────────────────────────
     st.markdown('<div class="section-label">💬 Generation Prompt</div>', unsafe_allow_html=True)
     user_prompt = st.text_area(
         "prompt", label_visibility="collapsed",
         placeholder="e.g. Write a weekly study plan to improve SAT Math from 600 to 750 in 8 weeks.",
-        height=105, key="user_prompt"
+        height=105, key="user_prompt",
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Optional existing draft
+    # ── Existing Draft (optional) ─────────────────────────────────────────────
     st.markdown('<div class="section-label">📄 Existing Draft (optional)</div>', unsafe_allow_html=True)
     existing_draft = st.text_area(
         "draft", label_visibility="collapsed",
-        placeholder="Paste an existing draft to audit directly — or leave blank to generate from the prompt.",
-        height=115, key="existing_draft"
+        placeholder="Paste an existing draft to audit — or leave blank to generate from the prompt.",
+        height=115, key="existing_draft",
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Rule input (Claude-style) ─────────────────────────────────────────────
+    # ── Constraint Rules (Claude-style chip input) ────────────────────────────
     st.markdown('<div class="section-label">📏 Constraint Rules</div>', unsafe_allow_html=True)
 
-    # FIX: instead of mutating a keyed widget's value (which crashes Streamlit),
-    # we change the key itself by incrementing input_counter.
-    # Each new key makes Streamlit render a fresh, empty textarea.
+    # Changing the key forces Streamlit to re-render the textarea blank.
+    # This avoids the StreamlitAPIException from writing to a live widget key.
     textarea_key = f"rule_input_{st.session_state.input_counter}"
 
     rule_text = st.text_area(
@@ -413,12 +401,10 @@ with col_left:
             "  • Weekly practice tests ≥ 2\n"
             "  • Total weekly study hours ≤ 14"
         ),
-        height=125,
-        key=textarea_key
+        height=125, key=textarea_key,
     )
 
     btn_add, btn_clear = st.columns([1, 1])
-
     with btn_add:
         if st.button("＋ Add Rule(s)", key="add_rule_btn"):
             raw = st.session_state.get(textarea_key, "").strip()
@@ -427,7 +413,6 @@ with col_left:
                     line = line.strip().lstrip("-•*›▸").strip()
                     if line and line not in st.session_state.rules:
                         st.session_state.rules.append(line)
-            # Bump counter → next render uses a new key → textarea appears blank
             st.session_state.input_counter += 1
             st.rerun()
 
@@ -436,16 +421,11 @@ with col_left:
             st.session_state.rules = []
             st.rerun()
 
-    # Render rule chips
     if st.session_state.rules:
         chips_html = '<div class="rules-container" style="margin-top:0.75rem;">'
         for i, r in enumerate(st.session_state.rules):
-            escaped = r.replace("<", "&lt;").replace(">", "&gt;")
-            chips_html += f'''
-            <div class="rule-chip">
-                <span class="rule-num">R{i+1}</span>
-                <span style="flex:1">{escaped}</span>
-            </div>'''
+            escaped = r.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            chips_html += f'<div class="rule-chip"><span class="rule-num">R{i+1}</span><span style="flex:1">{escaped}</span></div>'
         chips_html += '</div>'
         st.markdown(chips_html, unsafe_allow_html=True)
 
@@ -470,7 +450,6 @@ with col_left:
 # ── RIGHT COLUMN ──────────────────────────────────────────────────────────────
 with col_right:
 
-    # Idle placeholder
     if not run_btn and st.session_state.results is None:
         st.markdown("""
         <div class="glass-panel" style="text-align:center;padding:3rem 2rem;">
@@ -488,24 +467,21 @@ with col_right:
     # ── PIPELINE EXECUTION ────────────────────────────────────────────────────
     if run_btn:
 
-        # Basic validation
         if not api_key.strip():
-            st.error("⚠️  Please enter your Gemini API key.")
+            st.error("⚠️  Please enter your Anthropic API key (starts with `sk-ant-`).")
             st.stop()
         if not user_prompt.strip() and not existing_draft.strip():
             st.error("⚠️  Please enter a prompt or paste an existing draft.")
             st.stop()
 
-        # ── Import google.generativeai with a clear Cloud-friendly error ──────
+        # ── Import anthropic SDK ──────────────────────────────────────────────
         try:
-            import google.generativeai as genai
+            import anthropic as _anthropic
         except ImportError:
             st.error(
-                "**`google-generativeai` is not installed** in this environment.\n\n"
-                "**On Streamlit Cloud:** make sure `requirements.txt` is committed to your "
-                "repo root and contains `google-generativeai>=0.7.0`, then go to "
-                "**Manage app → Reboot app** to force a fresh install.\n\n"
-                "**Locally:** run `pip install google-generativeai` in your active venv."
+                "**`anthropic` package is not installed.**\n\n"
+                "Make sure `requirements.txt` contains `anthropic>=0.25.0` and is committed "
+                "to your repo root. Then go to **Manage app → Reboot app** on Streamlit Cloud."
             )
             st.stop()
 
@@ -513,11 +489,7 @@ with col_right:
         try:
             import m2_llm_parser as m2
         except ImportError as e:
-            st.error(
-                f"Cannot import `m2_llm_parser`: {e}\n\n"
-                "Make sure `m2_llm_parser.py` is in the **same folder** as `app.py` "
-                "and is committed to your repo."
-            )
+            st.error(f"Cannot import `m2_llm_parser`: {e}\n\nMake sure it is in the same folder as `app.py`.")
             st.stop()
 
         try:
@@ -541,7 +513,7 @@ with col_right:
             has_ltn = False
             st.warning("⚠️  `ltn` / `tensorflow` unavailable — M1 LTN scoring skipped.")
 
-        # ── Progress UI ───────────────────────────────────────────────────────
+        # ── Progress ──────────────────────────────────────────────────────────
         prog   = st.progress(0, text="Initialising…")
         status = st.empty()
         results = {}
@@ -562,7 +534,7 @@ with col_right:
         structured_rules = []
         if st.session_state.rules:
             prog.progress(25, text="🧩 Parsing constraints…")
-            status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s)…")
+            status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) with Claude…")
             try:
                 for r in st.session_state.rules:
                     structured_rules.append(m2.parse_rule_to_constraint(r, api_key))
@@ -590,16 +562,14 @@ with col_right:
                 st.warning(f"ChromaDB step failed (non-fatal): {e}")
             status.empty()
 
-        # STEP 4 — Generate draft
+        # STEP 4 — Generate draft (Claude)
         draft_text = existing_draft.strip()
         if not draft_text and user_prompt.strip():
-            prog.progress(52, text="✍️ Generating draft…")
-            status.info("Generating content with Gemini…")
+            prog.progress(52, text="✍️ Generating draft with Claude…")
+            status.info("Generating content with Claude…")
             try:
-                genai.configure(api_key=api_key)
-                gen_model = genai.GenerativeModel(
-                    os.getenv("GEMINI_GENERATION_MODEL", "gemini-2.5-flash")
-                )
+                client = _anthropic.Anthropic(api_key=api_key)
+
                 ctx_parts = [
                     f"[{s.get('source_name','Source')}] {s['context']}"
                     for s in source_results
@@ -619,7 +589,13 @@ with col_right:
                     + f"TASK: {user_prompt}"
                     + rule_block
                 )
-                draft_text = gen_model.generate_content(full_prompt).text
+
+                message    = client.messages.create(
+                    model      = "claude-sonnet-4-20250514",
+                    max_tokens = 4096,
+                    messages   = [{"role": "user", "content": full_prompt}],
+                )
+                draft_text = message.content[0].text
                 results["draft"] = draft_text
             except Exception as e:
                 st.error(f"Draft generation failed: {e}")
@@ -632,7 +608,7 @@ with col_right:
         audit_results = []
         if structured_rules and draft_text and mode in ["🔬 Full Pipeline", "📐 Rules + Audit Only"]:
             prog.progress(70, text="🔍 Auditing constraints…")
-            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s)…")
+            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s) with Claude…")
             try:
                 audit_results = m2.structured_audit(draft_text, structured_rules, api_key)
                 results["audit"] = audit_results
@@ -718,7 +694,7 @@ with col_right:
             if draft:
                 st.markdown('<div class="section-label">✍ Generated / Audited Content</div>',
                             unsafe_allow_html=True)
-                safe_draft = draft.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                safe_draft = draft.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 st.markdown(f'<div class="gen-output">{safe_draft}</div>', unsafe_allow_html=True)
                 st.download_button("⬇ Download Draft", data=draft,
                                    file_name="draft_output.txt", mime="text/plain", key="dl_draft")
@@ -812,7 +788,7 @@ with col_right:
                 data=json.dumps(res, indent=2, default=str),
                 file_name="pipeline_results.json",
                 mime="application/json",
-                key="dl_json"
+                key="dl_json",
             )
 
         st.markdown("<br>", unsafe_allow_html=True)
