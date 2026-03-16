@@ -1,0 +1,39 @@
+# ============================================================
+# NeuroSymbolic Verifier — Requirements
+# ============================================================
+# Install all dependencies with:
+#   pip install -r requirements.txt
+#
+# Python >= 3.10 recommended
+# ============================================================
+
+
+# ── Streamlit UI ─────────────────────────────────────────────
+streamlit>=1.35.0
+
+
+# ── Google Gemini (M2 LLM Parser + M4 Agentic Router) ───────
+google-generativeai>=0.7.0
+
+
+# ── LTN + TensorFlow (M1 Logic Tensor Network) ───────────────
+# TensorFlow CPU-only build is lighter; swap for tensorflow-gpu
+# if you have a CUDA-capable GPU.
+ltn>=1.2.0
+tensorflow>=2.16.0
+
+
+# ── ChromaDB (M3 Semantic Memory) ────────────────────────────
+chromadb>=0.5.0
+
+
+# ── Wikipedia (M4 Agentic Router — Source 1) ─────────────────
+wikipedia>=1.4.0
+
+
+# ── Environment variable loading (.env support) ──────────────
+python-dotenv>=1.0.0
+
+
+# ── Standard-library extras (already bundled with Python) ────
+# urllib, json, re, uuid, time — no install needed
