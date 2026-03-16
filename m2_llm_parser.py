@@ -15,7 +15,13 @@ _MODEL = "claude-sonnet-4-20250514"
 
 def _claude(api_key: str, prompt: str, max_tokens: int = 1024) -> str:
     """Thin wrapper: send a single-turn prompt to Claude, return response text."""
-    client = anthropic.Anthropic(api_key=api_key)
+    key = (api_key or "").strip()
+    if not key:
+        raise ValueError(
+            "Anthropic API key is empty. Paste your sk-ant- key in the UI, "
+            "set ANTHROPIC_API_KEY in your environment, or add it to Streamlit secrets."
+        )
+    client = anthropic.Anthropic(api_key=key)
     message = client.messages.create(
         model=_MODEL,
         max_tokens=max_tokens,
