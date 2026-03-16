@@ -1,5 +1,6 @@
 import wikipedia
 import google.generativeai as genai
+from google import genai
 import urllib.request
 import urllib.parse
 import json
