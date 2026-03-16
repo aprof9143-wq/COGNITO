@@ -13,7 +13,7 @@ streamlit>=1.35.0
 
 
 # ── Google Gemini (M2 LLM Parser + M4 Agentic Router) ───────
-google-generativeai>=0.7.0
+google-generativeai
 
 
 # ── LTN + TensorFlow (M1 Logic Tensor Network) ───────────────
