@@ -2,8 +2,6 @@
 NeuroSymbolic Verifier — Streamlit App
 A beautiful UI for the LTN + LLM constraint verification pipeline.
 """
-pip install google-generativeai
-
 import streamlit as st
 import sys
 import os
