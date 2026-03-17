@@ -1,7 +1,7 @@
 """
 NeuroSymbolic Verifier — Streamlit App
-All LLM calls use Anthropic Claude (anthropic SDK).
-No google-generativeai dependency anywhere in this file.
+All LLM calls use OpenAI GPT (openai SDK).
+Model: gpt-5-mini-2025-08-07
 """
 
 import streamlit as st
@@ -301,7 +301,7 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 1.3rem 
 st.markdown("""
 <div class="nsv-header">
   <div class="nsv-logo">Neuro<span>Symbolic</span> Verifier</div>
-  <div class="nsv-subtitle">LTN · Claude · Vector Memory · Agentic Research</div>
+  <div class="nsv-subtitle">LTN · GPT · Vector Memory · Agentic Research</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -345,13 +345,13 @@ def _resolve_api_key() -> str:
     """Read key from Streamlit secrets first, then env, then return empty."""
     # Streamlit Cloud secrets
     try:
-        key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        key = st.secrets.get("OPENAI_API_KEY", "")
         if key:
             return key.strip()
     except Exception:
         pass
     # Local .env / environment variable
-    key = os.getenv("ANTHROPIC_API_KEY", "")
+    key = os.getenv("OPENAI_API_KEY", "")
     return key.strip()
 
 if "resolved_api_key" not in st.session_state:
@@ -365,12 +365,12 @@ col_left, col_right = st.columns([1, 1.15], gap="large")
 with col_left:
 
     # ── API Key ───────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-label">🔑 Anthropic API Key</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">🔑 OpenAI API Key</div>', unsafe_allow_html=True)
 
     # Show a pre-filled indicator if key came from secrets/env, but still
     # allow the user to paste their own. We do NOT pass value= here —
     # that's what caused the key to be silently ignored on reruns.
-    _key_hint = "Auto-loaded from secrets ✓" if st.session_state.resolved_api_key else "sk-ant-…"
+    _key_hint = "Auto-loaded from secrets ✓" if st.session_state.resolved_api_key else "sk-…"
     api_key_input = st.text_input(
         "api_key", label_visibility="collapsed",
         type="password", placeholder=_key_hint,
@@ -389,7 +389,7 @@ with col_left:
     elif not api_key:
         st.markdown(
             '<p style="font-size:0.72rem;color:rgba(232,115,109,0.7);margin-top:-0.3rem;">'
-            '⚠ No key found — paste your <code>sk-ant-</code> key above</p>',
+            '⚠ No key found — paste your <code>sk-</code> key above</p>',
             unsafe_allow_html=True,
         )
 
@@ -425,7 +425,7 @@ with col_left:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Constraint Rules (Claude-style chip input) ────────────────────────────
+    # ── Constraint Rules (chip input) ────────────────────────────────────────
     st.markdown('<div class="section-label">📏 Constraint Rules</div>', unsafe_allow_html=True)
 
     # Changing the key forces Streamlit to re-render the textarea blank.
@@ -507,19 +507,19 @@ with col_right:
     if run_btn:
 
         if not api_key.strip():
-            st.error("⚠️  Please enter your Anthropic API key (starts with `sk-ant-`).")
+            st.error("⚠️  Please enter your OpenAI API key (starts with `sk-`).")
             st.stop()
         if not user_prompt.strip() and not existing_draft.strip():
             st.error("⚠️  Please enter a prompt or paste an existing draft.")
             st.stop()
 
-        # ── Import anthropic SDK ──────────────────────────────────────────────
+        # ── Import openai SDK ─────────────────────────────────────────────────
         try:
-            import anthropic as _anthropic
+            import openai as _openai
         except ImportError:
             st.error(
-                "**`anthropic` package is not installed.**\n\n"
-                "Make sure `requirements.txt` contains `anthropic>=0.25.0` and is committed "
+                "**`openai` package is not installed.**\n\n"
+                "Make sure `requirements.txt` contains `openai>=1.0.0` and is committed "
                 "to your repo root. Then go to **Manage app → Reboot app** on Streamlit Cloud."
             )
             st.stop()
@@ -573,7 +573,7 @@ with col_right:
         structured_rules = []
         if st.session_state.rules:
             prog.progress(25, text="🧩 Parsing constraints…")
-            status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) with Claude…")
+            status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) with GPT…")
             try:
                 for r in st.session_state.rules:
                     structured_rules.append(m2.parse_rule_to_constraint(r, api_key))
@@ -601,13 +601,13 @@ with col_right:
                 st.warning(f"ChromaDB step failed (non-fatal): {e}")
             status.empty()
 
-        # STEP 4 — Generate draft (Claude)
+        # STEP 4 — Generate draft (GPT)
         draft_text = existing_draft.strip()
         if not draft_text and user_prompt.strip():
-            prog.progress(52, text="✍️ Generating draft with Claude…")
-            status.info("Generating content with Claude…")
+            prog.progress(52, text="✍️ Generating draft with GPT…")
+            status.info("Generating content with GPT…")
             try:
-                client = _anthropic.Anthropic(api_key=api_key.strip())
+                client = _openai.OpenAI(api_key=api_key.strip())
 
                 ctx_parts = [
                     f"[{s.get('source_name','Source')}] {s['context']}"
@@ -629,12 +629,12 @@ with col_right:
                     + rule_block
                 )
 
-                message    = client.messages.create(
-                    model      = "claude-sonnet-4-20250514",
+                response   = client.chat.completions.create(
+                    model      = "gpt-5-mini-2025-08-07",
                     max_tokens = 4096,
                     messages   = [{"role": "user", "content": full_prompt}],
                 )
-                draft_text = message.content[0].text
+                draft_text = response.choices[0].message.content
                 results["draft"] = draft_text
             except Exception as e:
                 st.error(f"Draft generation failed: {e}")
@@ -647,7 +647,7 @@ with col_right:
         audit_results = []
         if structured_rules and draft_text and mode in ["🔬 Full Pipeline", "📐 Rules + Audit Only"]:
             prog.progress(70, text="🔍 Auditing constraints…")
-            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s) with Claude…")
+            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s) with GPT…")
             try:
                 audit_results = m2.structured_audit(draft_text, structured_rules, api_key)
                 results["audit"] = audit_results
