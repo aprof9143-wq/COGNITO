@@ -26,7 +26,13 @@ def _gpt(api_key: str, prompt: str, max_completion_tokens: int = 1024) -> str:
         max_completion_tokens=max_completion_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(
+            f"GPT returned no content (finish_reason='{response.choices[0].finish_reason}'). "
+            "The model may have refused or been filtered."
+        )
+    return content
 
 
 def parse_rule_to_constraint(rule_text: str, api_key: str) -> dict:
