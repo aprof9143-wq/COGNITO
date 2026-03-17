@@ -12,7 +12,7 @@ import re
 _MODEL = "gpt-5-mini-2025-08-07"
 
 
-def _gpt(api_key: str, prompt: str, max_tokens: int = 1024) -> str:
+def _gpt(api_key: str, prompt: str, max_completion_tokens: int = 1024) -> str:
     """Thin wrapper: send a single-turn prompt to GPT, return response text."""
     key = (api_key or "").strip()
     if not key:
@@ -23,7 +23,7 @@ def _gpt(api_key: str, prompt: str, max_tokens: int = 1024) -> str:
     client = openai.OpenAI(api_key=key)
     response = client.chat.completions.create(
         model=_MODEL,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_completion_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content
@@ -70,7 +70,7 @@ SCOPE RULES — choose carefully:
 - 'context_only' : for observations — the value is given context to USE, not enforce everywhere
 """
     try:
-        raw = _gpt(api_key, prompt, max_tokens=1024)
+        raw = _gpt(api_key, prompt, max_completion_tokens=1024)
         clean = raw.strip().replace("```json", "").replace("```", "").strip()
         return json.loads(clean)
     except Exception:
@@ -187,7 +187,7 @@ IMPORTANT RULES:
 - Be strict. If rule says < 10 and converted value equals 10, that is a VIOLATION.
 """
         try:
-            raw = _gpt(api_key, extraction_prompt, max_tokens=512)
+            raw = _gpt(api_key, extraction_prompt, max_completion_tokens=512)
             clean = raw.strip().replace("```json", "").replace("```", "").strip()
             llm_result = json.loads(clean)
         except Exception:
@@ -301,7 +301,7 @@ def extract_universal_facts(document_text, active_rule, api_key):
     Return ONLY raw JSON: {{"entities": [{{"name": "...", "premise_confidence": 0.0, "conclusion_confidence": 0.0}}]}}
     """
     try:
-        raw   = _gpt(api_key, prompt, max_tokens=512)
+        raw   = _gpt(api_key, prompt, max_completion_tokens=512)
         clean = raw.strip().replace("```json", "").replace("```", "")
         return json.loads(clean)
     except Exception:
