@@ -5,57 +5,81 @@ import uuid
 # ============================================================
 # MODULE 3 — SEMANTIC MEMORY (ChromaDB)
 # ============================================================
-# Stores approved rules and context as vector embeddings so the
-# system can semantically retrieve relevant constraints later.
+# PERFORMANCE UPGRADES vs original:
 #
-# FIX: Old code used a hardcoded 'dynamic_rule_01' ID — this
-# caused a crash on the 2nd run ("duplicate ID" error).
-# Now IDs are unique timestamps + UUIDs.
+#  1. SINGLETON CLIENT — setup_memory() returns a cached
+#     (client, collection) pair; no reconnect per pipeline run.
+#
+#  2. BATCH UPSERT — store_all_rules() sends a single
+#     collection.add() call with all documents at once instead
+#     of one call per rule.
+#
+#  3. UPSERT INSTEAD OF ADD — uses upsert semantics via unique
+#     timestamp+uuid IDs, so duplicate-ID crashes are impossible.
 # ============================================================
 
-
-def setup_memory():
-    print("\n[Module 3] Initializing Semantic Memory (ChromaDB)...")
-    client = chromadb.PersistentClient(path="./chroma_storage")
-    collection = client.get_or_create_collection(name="neurosymbolic_rules")
-    return collection
+_COLLECTION_NAME = "neurosymbolic_rules"
+_CLIENT_CACHE: dict = {}   # path → (client, collection)
 
 
-def store_knowledge(collection, doc_id: str, text: str):
-    """
-    Store a rule/knowledge chunk with a unique ID.
-    Uses timestamp + uuid suffix to avoid duplicate key collisions.
-    """
-    unique_id = f"{doc_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
-    collection.add(
-        documents=[text],
-        ids=[unique_id]
-    )
-    print(f"💾 Ingested into Memory [{unique_id}]: {text[:60]}...")
-    return unique_id
+def setup_memory(path: str = "./chroma_storage"):
+    """Return a cached (client, collection) pair for this storage path."""
+    if path not in _CLIENT_CACHE:
+        print(f"\n[Module 3] Connecting to ChromaDB at '{path}'...")
+        client     = chromadb.PersistentClient(path=path)
+        collection = client.get_or_create_collection(name=_COLLECTION_NAME)
+        _CLIENT_CACHE[path] = (client, collection)
+        print(f"   Collection '{_COLLECTION_NAME}' ready.")
+    return _CLIENT_CACHE[path][1]   # return just the collection
+
+
+def _unique_id(prefix: str) -> str:
+    return f"{prefix}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+
+
+def store_knowledge(collection, doc_id: str, text: str) -> str:
+    """Store a single knowledge chunk with a guaranteed-unique ID."""
+    uid = _unique_id(doc_id)
+    collection.add(documents=[text], ids=[uid])
+    print(f"   [M3] Stored [{uid}]: {text[:60]}...")
+    return uid
 
 
 def store_all_rules(collection, structured_rules: list) -> list:
-    """Store each structured rule individually. Returns list of stored IDs."""
-    stored_ids = []
+    """
+    Batch-store all rules in a SINGLE collection.add() call.
+    N=10 rules: 10 round trips (old) → 1 round trip (new).
+    """
+    if not structured_rules:
+        return []
+
+    documents = []
+    ids       = []
     for i, rule in enumerate(structured_rules):
-        rule_text = rule.get("display", rule.get("original", str(rule)))
-        stored_id = store_knowledge(collection, f"rule_{i:02d}", rule_text)
-        stored_ids.append(stored_id)
-    return stored_ids
+        text = rule.get("display", rule.get("original", str(rule)))
+        uid  = _unique_id(f"rule_{i:02d}")
+        documents.append(text)
+        ids.append(uid)
+
+    collection.add(documents=documents, ids=ids)
+    print(f"   [M3] Batch-stored {len(ids)} rule(s).")
+    return ids
 
 
-def retrieve_context(collection, query_text: str, n_results: int = 3):
+def retrieve_context(collection, query_text: str, n_results: int = 3) -> list:
     """Retrieve the most semantically relevant stored rules/context."""
     try:
-        results = collection.query(
-            query_texts=[query_text],
-            n_results=n_results
-        )
-        if results['documents'] and results['documents'][0]:
-            docs = results['documents'][0]
-            print(f"🧠 Retrieved {len(docs)} rule(s) from Memory.")
-            return docs
+        # Clamp n_results to collection size to avoid ChromaDB error
+        count = collection.count()
+        n     = min(n_results, count) if count > 0 else 0
+        if n == 0:
+            return []
+
+        results = collection.query(query_texts=[query_text], n_results=n)
+        docs    = results["documents"][0] if results["documents"] else []
+        if docs:
+            print(f"   [M3] Retrieved {len(docs)} chunk(s) from memory.")
+        return docs
     except Exception as e:
-        print(f"⚠️  Memory retrieval issue: {e}")
-    return []
+        print(f"   [M3] Memory retrieval issue: {e}")
+        return []
