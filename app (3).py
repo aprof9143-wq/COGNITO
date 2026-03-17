@@ -634,8 +634,21 @@ with col_right:
                     max_completion_tokens = 4096,
                     messages   = [{"role": "user", "content": full_prompt}],
                 )
-                draft_text = response.choices[0].message.content
+                choice  = response.choices[0]
+                content = choice.message.content
+                finish  = choice.finish_reason
+                if not content:
+                    st.error(
+                        f"GPT returned an empty response "
+                        f"(finish_reason=\'{finish}\'). "
+                        f"The model may have refused or hit a content filter. "
+                        f"Try rephrasing your prompt."
+                    )
+                    st.stop()
+                draft_text = content
                 results["draft"] = draft_text
+            except st.StopException:
+                raise
             except Exception as e:
                 st.error(f"Draft generation failed: {e}")
                 st.stop()
