@@ -14,7 +14,7 @@ import re
 _MODEL = "gpt-5-mini-2025-08-07"
 
 
-def _gpt(api_key: str, prompt: str, max_tokens: int = 256) -> str:
+def _gpt(api_key: str, prompt: str, max_completion_tokens: int = 256) -> str:
     """Thin wrapper: single-turn GPT call, returns response text."""
     key = (api_key or "").strip()
     if not key:
@@ -25,7 +25,7 @@ def _gpt(api_key: str, prompt: str, max_tokens: int = 256) -> str:
     client = openai.OpenAI(api_key=key)
     response = client.chat.completions.create(
         model=_MODEL,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_completion_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content
@@ -192,7 +192,7 @@ def _llm_domain_check(article_title: str, article_summary: str,
             f'Article summary: "{article_summary[:300]}"\n\n'
             f'Answer with ONLY "yes" or "no". No explanation.'
         )
-        answer = _gpt(api_key, prompt, max_tokens=10)
+        answer = _gpt(api_key, prompt, max_completion_tokens=10)
         return answer.strip().lower().startswith("yes")
     except Exception:
         return True  # default accept on failure
@@ -216,7 +216,7 @@ Examples:
   "design safety logic for a two-wheel balancing robot" → inverted pendulum balancing robot control
 
 Search query:"""
-            result = _gpt(api_key, prompt, max_tokens=32)
+            result = _gpt(api_key, prompt, max_completion_tokens=32)
             result = result.replace('"', "").replace("'", "").replace("\n", " ").strip()
             return result[:60]
         except Exception:
