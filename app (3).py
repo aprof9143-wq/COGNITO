@@ -560,12 +560,16 @@ with col_right:
         results = {}
 
         # ── PARALLEL PHASE: Research (M4) + Rule Parsing (M2) run together ────
+        # Snapshot session_state into a plain local list BEFORE entering any threads.
+        # st.session_state is not accessible from background threads.
+        rules_snapshot = list(st.session_state.rules)
+
         source_results   = []
         structured_rules = []
         memory_context   = []
 
         do_research = has_m4 and mode in ["🔬 Full Pipeline", "🌐 Research + Generate"]
-        do_rules    = bool(st.session_state.rules)
+        do_rules    = bool(rules_snapshot)
 
         prog.progress(10, text="⚡ Research & rule parsing in parallel…")
 
@@ -573,7 +577,7 @@ with col_right:
             return m4.research_all_sources(user_prompt, api_key=api_key)
 
         def _run_rule_parse():
-            return m2.parse_rules_parallel(st.session_state.rules, api_key)
+            return m2.parse_rules_parallel(rules_snapshot, api_key)
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = {}
@@ -585,7 +589,7 @@ with col_right:
             if "research" in futures:
                 status.info("Module 4 — Searching Wikipedia & DuckDuckGo (concurrent)…")
             if "rules" in futures:
-                status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) in parallel…")
+                status.info(f"Module 2 — Parsing {len(rules_snapshot)} rule(s) in parallel…")
 
             if "research" in futures:
                 try:
