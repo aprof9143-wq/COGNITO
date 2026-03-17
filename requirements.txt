@@ -13,7 +13,7 @@
 streamlit>=1.35.0
 
 # ── Anthropic Claude (M2 parser/auditor + M4 router + generation)
-anthropic>=0.25.0
+openai>=1.0.0
 
 # ── ChromaDB — semantic memory (M3) ──────────────────────────
 chromadb>=0.5.0
