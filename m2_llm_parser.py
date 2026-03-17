@@ -1,33 +1,32 @@
-import anthropic
+import openai
 import json
 import re
 
 # ============================================================
 # MODULE 2 — LLM PARSER & STRUCTURED CONSTRAINT AUDITOR
 # ============================================================
-# Rewritten to use Anthropic Claude instead of Google Gemini.
-# All genai.configure / GenerativeModel calls replaced with
-# anthropic.Anthropic client + client.messages.create().
+# Uses OpenAI GPT API.
+# All calls use openai.OpenAI client + client.chat.completions.create().
 # ============================================================
 
-_MODEL = "claude-sonnet-4-20250514"
+_MODEL = "gpt-5-mini-2025-08-07"
 
 
-def _claude(api_key: str, prompt: str, max_tokens: int = 1024) -> str:
-    """Thin wrapper: send a single-turn prompt to Claude, return response text."""
+def _gpt(api_key: str, prompt: str, max_tokens: int = 1024) -> str:
+    """Thin wrapper: send a single-turn prompt to GPT, return response text."""
     key = (api_key or "").strip()
     if not key:
         raise ValueError(
-            "Anthropic API key is empty. Paste your sk-ant- key in the UI, "
-            "set ANTHROPIC_API_KEY in your environment, or add it to Streamlit secrets."
+            "OpenAI API key is empty. Paste your sk- key in the UI, "
+            "set OPENAI_API_KEY in your environment, or add it to Streamlit secrets."
         )
-    client = anthropic.Anthropic(api_key=key)
-    message = client.messages.create(
+    client = openai.OpenAI(api_key=key)
+    response = client.chat.completions.create(
         model=_MODEL,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    return response.choices[0].message.content
 
 
 def parse_rule_to_constraint(rule_text: str, api_key: str) -> dict:
@@ -71,7 +70,7 @@ SCOPE RULES — choose carefully:
 - 'context_only' : for observations — the value is given context to USE, not enforce everywhere
 """
     try:
-        raw = _claude(api_key, prompt, max_tokens=1024)
+        raw = _gpt(api_key, prompt, max_tokens=1024)
         clean = raw.strip().replace("```json", "").replace("```", "").strip()
         return json.loads(clean)
     except Exception:
@@ -188,7 +187,7 @@ IMPORTANT RULES:
 - Be strict. If rule says < 10 and converted value equals 10, that is a VIOLATION.
 """
         try:
-            raw = _claude(api_key, extraction_prompt, max_tokens=512)
+            raw = _gpt(api_key, extraction_prompt, max_tokens=512)
             clean = raw.strip().replace("```json", "").replace("```", "").strip()
             llm_result = json.loads(clean)
         except Exception:
@@ -196,7 +195,7 @@ IMPORTANT RULES:
                 "extracted_value_raw" : "EXTRACTION FAILED",
                 "extracted_value_num" : None,
                 "satisfies"           : False,
-                "explanation"         : "Claude extraction failed — treating as violation.",
+                "explanation"         : "GPT extraction failed — treating as violation.",
             }
 
         # ── Symbolic double-check for numerical constraints ───────────────────
@@ -302,7 +301,7 @@ def extract_universal_facts(document_text, active_rule, api_key):
     Return ONLY raw JSON: {{"entities": [{{"name": "...", "premise_confidence": 0.0, "conclusion_confidence": 0.0}}]}}
     """
     try:
-        raw   = _claude(api_key, prompt, max_tokens=512)
+        raw   = _gpt(api_key, prompt, max_tokens=512)
         clean = raw.strip().replace("```json", "").replace("```", "")
         return json.loads(clean)
     except Exception:
