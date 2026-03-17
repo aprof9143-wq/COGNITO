@@ -631,7 +631,7 @@ with col_right:
 
                 response   = client.chat.completions.create(
                     model      = "gpt-5-mini-2025-08-07",
-                    max_tokens = 4096,
+                    max_completion_tokens = 4096,
                     messages   = [{"role": "user", "content": full_prompt}],
                 )
                 draft_text = response.choices[0].message.content
