@@ -12,6 +12,8 @@
 # ── UI ────────────────────────────────────────────────────────
 streamlit>=1.35.0
 
+qdrant-client>=1.9.0
+
 # ── Anthropic Claude (M2 parser/auditor + M4 router + generation)
 openai>=1.0.0
 
