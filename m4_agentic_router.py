@@ -1,4 +1,4 @@
-import anthropic
+import openai
 import wikipedia
 import urllib.request
 import urllib.parse
@@ -8,28 +8,27 @@ import re
 # ============================================================
 # MODULE 4 — AGENTIC ROUTER: MULTI-SOURCE RESEARCH
 # ============================================================
-# Rewritten to use Anthropic Claude instead of Google Gemini.
-# Sources: Wikipedia + DuckDuckGo Instant Answer (both free).
+# Uses OpenAI GPT API. Sources: Wikipedia + DuckDuckGo Instant Answer (both free).
 # ============================================================
 
-_MODEL = "claude-sonnet-4-20250514"
+_MODEL = "gpt-5-mini-2025-08-07"
 
 
-def _claude(api_key: str, prompt: str, max_tokens: int = 256) -> str:
-    """Thin wrapper: single-turn Claude call, returns response text."""
+def _gpt(api_key: str, prompt: str, max_tokens: int = 256) -> str:
+    """Thin wrapper: single-turn GPT call, returns response text."""
     key = (api_key or "").strip()
     if not key:
         raise ValueError(
-            "Anthropic API key is empty. Paste your sk-ant- key in the UI, "
-            "set ANTHROPIC_API_KEY in your environment, or add it to Streamlit secrets."
+            "OpenAI API key is empty. Paste your sk- key in the UI, "
+            "set OPENAI_API_KEY in your environment, or add it to Streamlit secrets."
         )
-    client = anthropic.Anthropic(api_key=key)
-    message = client.messages.create(
+    client = openai.OpenAI(api_key=key)
+    response = client.chat.completions.create(
         model=_MODEL,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    return response.choices[0].message.content
 
 
 # ── PUBLIC ENTRY POINTS ──────────────────────────────────────────────────────
@@ -185,7 +184,7 @@ def _failed(reason: str) -> dict:
 
 def _llm_domain_check(article_title: str, article_summary: str,
                        search_query: str, api_key: str) -> bool:
-    """Ask Claude whether a Wikipedia article is relevant to the search query."""
+    """Ask GPT whether a Wikipedia article is relevant to the search query."""
     try:
         prompt = (
             f'Is the Wikipedia article titled "{article_title}" genuinely relevant to '
@@ -193,7 +192,7 @@ def _llm_domain_check(article_title: str, article_summary: str,
             f'Article summary: "{article_summary[:300]}"\n\n'
             f'Answer with ONLY "yes" or "no". No explanation.'
         )
-        answer = _claude(api_key, prompt, max_tokens=10)
+        answer = _gpt(api_key, prompt, max_tokens=10)
         return answer.strip().lower().startswith("yes")
     except Exception:
         return True  # default accept on failure
@@ -217,7 +216,7 @@ Examples:
   "design safety logic for a two-wheel balancing robot" → inverted pendulum balancing robot control
 
 Search query:"""
-            result = _claude(api_key, prompt, max_tokens=32)
+            result = _gpt(api_key, prompt, max_tokens=32)
             result = result.replace('"', "").replace("'", "").replace("\n", " ").strip()
             return result[:60]
         except Exception:
