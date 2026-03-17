@@ -1,7 +1,8 @@
 """
-NeuroSymbolic Verifier — Streamlit App
-All LLM calls use OpenAI GPT (openai SDK).
-Model: gpt-5-mini-2025-08-07
+NeuroSymbolic Verifier — Streamlit App (Real-Time Engine)
+All LLM calls use OpenAI GPT (openai SDK) — gpt-5-mini-2025-08-07.
+Real-time upgrades: streaming draft, parallel research + rule parsing,
+batched audit, pure-math LTN (no TensorFlow), shared client cache.
 """
 
 import streamlit as st
@@ -9,6 +10,7 @@ import sys
 import os
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -301,7 +303,7 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 1.3rem 
 st.markdown("""
 <div class="nsv-header">
   <div class="nsv-logo">Neuro<span>Symbolic</span> Verifier</div>
-  <div class="nsv-subtitle">LTN · GPT · Vector Memory · Agentic Research</div>
+  <div class="nsv-subtitle">Real-Time · Parallel · Streaming · LTN · GPT · Vector Memory</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -550,62 +552,80 @@ with col_right:
             has_ltn = True
         except ImportError:
             has_ltn = False
-            st.warning("⚠️  `ltn` / `tensorflow` unavailable — M1 LTN scoring skipped.")
+            st.warning("⚠️  m1_ltn_core unavailable — LTN scoring skipped.")
 
         # ── Progress ──────────────────────────────────────────────────────────
         prog   = st.progress(0, text="Initialising…")
         status = st.empty()
         results = {}
 
-        # STEP 1 — Research (M4)
-        source_results = []
-        if has_m4 and mode in ["🔬 Full Pipeline", "🌐 Research + Generate"]:
-            prog.progress(10, text="🌐 Researching topic…")
-            status.info("Module 4 — Searching Wikipedia & DuckDuckGo…")
-            try:
-                source_results = m4.research_all_sources(user_prompt, api_key=api_key)
-                results["sources"] = source_results
-            except Exception as e:
-                st.warning(f"M4 research failed (non-fatal): {e}")
-            status.empty()
-
-        # STEP 2 — Parse rules (M2)
+        # ── PARALLEL PHASE: Research (M4) + Rule Parsing (M2) run together ────
+        source_results   = []
         structured_rules = []
-        if st.session_state.rules:
-            prog.progress(25, text="🧩 Parsing constraints…")
-            status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) with GPT…")
-            try:
-                for r in st.session_state.rules:
-                    structured_rules.append(m2.parse_rule_to_constraint(r, api_key))
-                results["structured_rules"] = structured_rules
-            except Exception as e:
-                st.error(f"Rule parsing failed: {e}")
-                st.stop()
-            status.empty()
+        memory_context   = []
+
+        do_research = has_m4 and mode in ["🔬 Full Pipeline", "🌐 Research + Generate"]
+        do_rules    = bool(st.session_state.rules)
+
+        prog.progress(10, text="⚡ Research & rule parsing in parallel…")
+
+        def _run_research():
+            return m4.research_all_sources(user_prompt, api_key=api_key)
+
+        def _run_rule_parse():
+            return m2.parse_rules_parallel(st.session_state.rules, api_key)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {}
+            if do_research:
+                futures["research"] = pool.submit(_run_research)
+            if do_rules:
+                futures["rules"] = pool.submit(_run_rule_parse)
+
+            if "research" in futures:
+                status.info("Module 4 — Searching Wikipedia & DuckDuckGo (concurrent)…")
+            if "rules" in futures:
+                status.info(f"Module 2 — Parsing {len(st.session_state.rules)} rule(s) in parallel…")
+
+            if "research" in futures:
+                try:
+                    source_results = futures["research"].result()
+                    results["sources"] = source_results
+                except Exception as e:
+                    st.warning(f"M4 research failed (non-fatal): {e}")
+
+            if "rules" in futures:
+                try:
+                    structured_rules = futures["rules"].result()
+                    results["structured_rules"] = structured_rules
+                except Exception as e:
+                    st.error(f"Rule parsing failed: {e}")
+                    st.stop()
+
+        status.empty()
+        prog.progress(35, text="💾 Semantic memory…")
 
         # STEP 3 — ChromaDB (M3)
-        memory_context = []
         if has_m3 and mode in ["🔬 Full Pipeline", "🌐 Research + Generate"]:
-            prog.progress(38, text="💾 Storing in semantic memory…")
-            status.info("Module 3 — ChromaDB ingestion…")
+            status.info("Module 3 — ChromaDB batch ingestion…")
             try:
                 collection = m3.setup_memory()
                 for src in source_results:
                     m3.store_knowledge(collection, f"src_{src.get('source_name','x')}", src["context"])
                 if structured_rules:
                     m3.store_all_rules(collection, structured_rules)
-                query = user_prompt or existing_draft
+                query          = user_prompt or existing_draft
                 memory_context = m3.retrieve_context(collection, query, n_results=4)
                 results["memory_context"] = memory_context
             except Exception as e:
                 st.warning(f"ChromaDB step failed (non-fatal): {e}")
             status.empty()
 
-        # STEP 4 — Generate draft (GPT)
+        # STEP 4 — Generate draft with STREAMING
         draft_text = existing_draft.strip()
         if not draft_text and user_prompt.strip():
-            prog.progress(52, text="✍️ Generating draft with GPT…")
-            status.info("Generating content with GPT…")
+            prog.progress(50, text="✍️ Streaming draft…")
+            status.info("Generating content with GPT (streaming)…")
             try:
                 client = _openai.OpenAI(api_key=api_key.strip())
 
@@ -629,23 +649,36 @@ with col_right:
                     + rule_block
                 )
 
-                response   = client.chat.completions.create(
-                    model      = "gpt-5-mini-2025-08-07",
-                    max_completion_tokens = 4096,
-                    messages   = [{"role": "user", "content": full_prompt}],
+                # Streaming: show tokens as they arrive
+                stream_placeholder = st.empty()
+                stream_box = st.empty()
+                stream_placeholder.info("⚡ Streaming response…")
+                collected = []
+
+                stream = client.chat.completions.create(
+                    model  = "gpt-5-mini-2025-08-07",
+                    max_completion_tokens = 16000,
+                    stream = True,
+                    messages = [{"role": "user", "content": full_prompt}],
                 )
-                choice  = response.choices[0]
-                content = choice.message.content
-                finish  = choice.finish_reason
-                if not content:
-                    st.error(
-                        f"GPT returned an empty response "
-                        f"(finish_reason=\'{finish}\'). "
-                        f"The model may have refused or hit a content filter. "
-                        f"Try rephrasing your prompt."
-                    )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        collected.append(delta)
+                        live_text = "".join(collected)
+                        safe = live_text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                        stream_box.markdown(
+                            f'<div class="gen-output" style="max-height:320px">{safe}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                stream_placeholder.empty()
+                draft_text = "".join(collected)
+
+                if not draft_text.strip():
+                    st.error("GPT returned an empty response. Try rephrasing your prompt.")
                     st.stop()
-                draft_text = content
+
                 results["draft"] = draft_text
             except st.StopException:
                 raise
@@ -656,11 +689,11 @@ with col_right:
         else:
             results["draft"] = draft_text
 
-        # STEP 5 — Audit (M2)
+        # STEP 5 — Batched Audit (M2) — single API call for all rules
         audit_results = []
         if structured_rules and draft_text and mode in ["🔬 Full Pipeline", "📐 Rules + Audit Only"]:
-            prog.progress(70, text="🔍 Auditing constraints…")
-            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s) with GPT…")
+            prog.progress(75, text="🔍 Batched constraint audit…")
+            status.info(f"Module 2 — Auditing {len(structured_rules)} rule(s) in one call…")
             try:
                 audit_results = m2.structured_audit(draft_text, structured_rules, api_key)
                 results["audit"] = audit_results
@@ -669,17 +702,15 @@ with col_right:
                 st.stop()
             status.empty()
 
-        # STEP 6 — LTN (M1)
+        # STEP 6 — LTN (M1) — pure-math, instant
         if has_ltn and audit_results:
-            prog.progress(88, text="⚖️ LTN verification…")
-            status.info("Module 1 — Logic Tensor Network scoring…")
+            prog.progress(92, text="⚖️ LTN verification…")
             try:
                 ltn_score, violations = m1.verify_and_report(audit_results)
                 results["ltn_score"]  = ltn_score
                 results["violations"] = violations
             except Exception as e:
                 st.warning(f"LTN scoring failed (non-fatal): {e}")
-            status.empty()
 
         prog.progress(100, text="✅ Done!")
         time.sleep(0.35)
